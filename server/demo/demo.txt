@@ -1,0 +1,49 @@
+Vì có dùng pthread, bạn cần thêm cờ -pthread khi biên dịch:
+
+Bash
+
+gcc client.c -o client_app -pthread
+
+ Kịch Bản Demo (2 Người Chat Nhau) 
+Bạn cần mở 3 cửa sổ Terminal:
+
+Terminal 1: Chạy Server (./server_app).
+
+Terminal 2: Chạy Client A (Đóng vai Hùng).
+
+Terminal 3: Chạy Client B (Đóng vai Dũng).
+
+Thao tác chi tiết:
+Tại Terminal 2 (Hùng):
+
+Chạy: ./client_app
+
+Chọn 1 (Đăng ký) -> Nhập hung 123. Server báo signup_success.
+
+Chọn 2 (Đăng nhập) -> Nhập hung 123.
+
+ Quan sát: Server trả về [0x22] 1 hung. Hãy nhớ ID của Hùng là 1.
+
+Tại Terminal 3 (Dũng):
+
+Chạy: ./client_app
+
+Chọn 1 (Đăng ký) -> Nhập dung 456.
+
+Chọn 2 (Đăng nhập) -> Nhập dung 456.
+
+ Quan sát: Server trả về [0x22] 2 dung. Hãy nhớ ID của Dũng là 2.
+
+BẮT ĐẦU CHAT (Hùng nhắn cho Dũng):
+
+Quay lại Terminal 2 (Hùng).
+
+Chọn 3 (Chat riêng).
+
+Nhập theo cú pháp [ID_Cua_Ban] [ID_Nguoi_Nhan] [Tin_Nhan]: 1 2 Xin chao Dung, minh la Hung day!
+
+Nhấn Enter.
+
+KẾT QUẢ (Tại Terminal 3 - Dũng):
+
+Ngay lập tức, dù Dũng đang không làm gì, màn hình sẽ hiện lên: >>> 📩 CO TIN NHAN MOI: User1:Xin chao Dung, minh la Hung day!

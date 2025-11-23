@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "websocket_handshake.h": "c",
+        "protocol.h": "c"
+    }
+}
