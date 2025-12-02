@@ -155,3 +155,40 @@ int authenticate_user(const char *username, const char *password)
         return -1;
     }
 }
+
+// Hàm tìm tên user dựa vào ID (Quét thư mục)
+void get_username_by_id(int id, char *out_username)
+{
+    strcpy(out_username, ""); // Mặc định rỗng nếu không tìm thấy
+
+    char path[256];
+    sprintf(path, "%s/username.txt", DATA_DIR);
+    FILE *f = fopen(path, "r");
+    if (!f)
+        return;
+
+    char name[50];
+    // Đọc từng tên trong danh sách
+    while (fgets(name, sizeof(name), f))
+    {
+        name[strcspn(name, "\n")] = 0; // Xóa \n
+
+        // Mở file info của user này để xem ID
+        char info_path[256];
+        sprintf(info_path, "%s/%s/info.txt", DATA_DIR, name);
+        FILE *fi = fopen(info_path, "r");
+        if (fi)
+        {
+            int current_id;
+            fscanf(fi, "%d", &current_id);
+            fclose(fi);
+
+            if (current_id == id)
+            {
+                strcpy(out_username, name);
+                break; // Tìm thấy!
+            }
+        }
+    }
+    fclose(f);
+}

@@ -1,6 +1,8 @@
 {
     "files.associations": {
         "websocket_handshake.h": "c",
-        "protocol.h": "c"
+        "protocol.h": "c",
+        "message_handler.h": "c",
+        "typeinfo": "c"
     }
 }

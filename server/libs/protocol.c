@@ -3,104 +3,72 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <stdint.h>
+#include <arpa/inet.h> // Để dùng hàm htons, ntohs
 #include <sys/socket.h>
-#include <arpa/inet.h> // Cho htons
 
-int ws_read_frame(int socket, char *out_buffer, size_t buffer_size)
+void send_packet(int socket, int cmd, const char *payload)
 {
-    uint8_t header[2];
+    // 1. Tính toán kích thước
+    size_t payload_len = strlen(payload);
 
-    // 1. Đọc 2 byte đầu tiên (Header cơ bản)
-    if (recv(socket, header, 2, 0) <= 0)
-        return -1;
+    // Tổng độ dài = 1 byte lệnh + độ dài payload
+    // (Không tính 2 byte đầu vì nó dùng để chứa con số này)
+    uint16_t data_len = 1 + payload_len;
 
-    uint8_t opcode = header[0] & 0x0F;        // Lấy 4 bit cuối của byte đầu
-    uint8_t masked = (header[1] & 0x80) >> 7; // Bit đầu của byte 2 (Mask)
-    uint64_t payload_len = header[1] & 0x7F;  // 7 bit sau (Độ dài)
+    // Chuyển sang Big Endian (chuẩn mạng) để gửi đi an toàn
+    uint16_t net_len = htons(data_len);
 
-    // Nếu Client gửi tin nhắn đóng kết nối (Opcode = 8)
-    if (opcode == 8)
-        return 8;
+    // 2. Gửi Header (2 byte độ dài)
+    send(socket, &net_len, 2, 0);
 
-    // 2. Xử lý độ dài mở rộng (nếu tin nhắn dài)
-    if (payload_len == 126)
+    // 3. Gửi Mã Lệnh (1 byte)
+    unsigned char cmd_byte = (unsigned char)cmd;
+    send(socket, &cmd_byte, 1, 0);
+
+    // 4. Gửi Nội dung (nếu có)
+    if (payload_len > 0)
     {
-        uint8_t len_bytes[2];
-        recv(socket, len_bytes, 2, 0);
-        payload_len = (len_bytes[0] << 8) | len_bytes[1];
+        send(socket, payload, payload_len, 0);
     }
-    else if (payload_len == 127)
-    {
-        // (Bỏ qua cho đơn giản, chat thường không dài thế này)
-        uint8_t len_bytes[8];
-        recv(socket, len_bytes, 8, 0);
-        return -1;
-    }
-
-    // 3. Đọc Masking Key (4 byte) - Bắt buộc có nếu từ Client
-    uint8_t mask_key[4] = {0};
-    if (masked)
-    {
-        recv(socket, mask_key, 4, 0);
-    }
-
-    // 4. Đọc Payload (Nội dung bị mã hóa)
-    if (payload_len >= buffer_size)
-        payload_len = buffer_size - 1; // Tránh tràn
-
-    char *raw_data = malloc(payload_len);
-    size_t total_read = 0;
-    while (total_read < payload_len)
-    {
-        int r = recv(socket, raw_data + total_read, payload_len - total_read, 0);
-        if (r <= 0)
-        {
-            free(raw_data);
-            return -1;
-        }
-        total_read += r;
-    }
-
-    // 5. Giải mã (Unmask) - Đây là "phép thuật" XOR
-    // Công thức: decoded[i] = encoded[i] XOR mask_key[i % 4]
-    for (size_t i = 0; i < payload_len; i++)
-    {
-        out_buffer[i] = raw_data[i] ^ mask_key[i % 4];
-    }
-    out_buffer[payload_len] = '\0'; // Kết thúc chuỗi
-
-    free(raw_data);
-    return opcode;
 }
 
-void ws_send_frame(int socket, const char *msg)
+int recv_packet(int socket, char *out_buffer, size_t buffer_size)
 {
-    size_t len = strlen(msg);
-    uint8_t frame[10 + len]; // Header tối đa 10 byte + nội dung
-    size_t header_len = 0;
+    uint16_t net_len;
 
-    // Byte 1: FIN=1 (kết thúc), Opcode=1 (Text) -> 1000 0001 -> 0x81
-    frame[0] = 0x81;
+    // 1. Đọc 2 byte đầu tiên để biết độ dài gói tin
+    // MSG_WAITALL đảm bảo đọc đủ 2 byte mới thôi (tránh đọc lắt nhắt)
+    int bytes = recv(socket, &net_len, 2, MSG_WAITALL);
+    if (bytes <= 0)
+        return -1; // Ngắt kết nối hoặc lỗi
 
-    // Byte 2: Mask=0 (Server gửi không cần mask), Payload Len
-    if (len < 126)
+    // Chuyển từ Big Endian về Little Endian (chuẩn máy tính)
+    uint16_t data_len = ntohs(net_len);
+
+    // 2. Đọc 1 byte Mã Lệnh
+    unsigned char cmd;
+    bytes = recv(socket, &cmd, 1, MSG_WAITALL);
+    if (bytes <= 0)
+        return -1;
+
+    // 3. Đọc phần Nội dung còn lại (data_len - 1 byte lệnh)
+    int payload_len = data_len - 1;
+    if (payload_len > 0)
     {
-        frame[1] = len;
-        header_len = 2;
+        // Kiểm tra tràn bộ đệm
+        if (payload_len >= buffer_size)
+            payload_len = buffer_size - 1;
+
+        bytes = recv(socket, out_buffer, payload_len, MSG_WAITALL);
+        if (bytes <= 0)
+            return -1;
+
+        out_buffer[payload_len] = '\0'; // Kết thúc chuỗi an toàn
     }
-    else if (len <= 65535)
+    else
     {
-        frame[1] = 126;
-        frame[2] = (len >> 8) & 0xFF;
-        frame[3] = len & 0xFF;
-        header_len = 4;
+        out_buffer[0] = '\0'; // Không có nội dung
     }
-    // (Bỏ qua trường hợp > 65535 cho gọn)
 
-    // Copy tin nhắn vào sau Header
-    memcpy(frame + header_len, msg, len);
-
-    // Gửi tất cả đi
-    send(socket, frame, header_len + len, 0);
+    return (int)cmd; // Trả về mã lệnh để Server xử lý
 }
