@@ -67,3 +67,17 @@ int get_socket_by_user_id(int user_id)
     pthread_mutex_unlock(&g_clients_mutex);
     return target_socket;
 }
+
+void set_chat_partner(int user_id, int partner_id)
+{
+    pthread_mutex_lock(&g_clients_mutex);
+    for (int i = 0; i < MAX_CLIENTS; i++)
+    {
+        if (g_clients[i].is_online && g_clients[i].user_id == user_id)
+        {
+            g_clients[i].chat_partner_id = partner_id;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&g_clients_mutex);
+}

@@ -1,7 +1,3 @@
 tung
 huy
-congtung
-hung
 halinh
-hoang
-hoangcong

@@ -13,7 +13,6 @@
 #define CMD_REGISTER 0x01           // Đăng ký tài khoản
 #define CMD_LOGIN 0x02              // Đăng nhập
 #define CMD_CHAT 0x03               // Gửi tin nhắn riêng tư
-#define CMD_CHAT_OFFLINE 0x04       // Gửi tin nhắn ngoại tuyến
 #define CMD_RETRIEVE 0x05           // Lấy tin nhắn đã gửi/nhận
 #define CMD_ADDFR 0x06              // Gửi yêu cầu kết bạn
 #define CMD_ACCEPT 0x07             // Chấp nhận yêu cầu kết bạn
@@ -44,7 +43,6 @@
 #define RESPONSE_CHAT_REQUEST 0x47 // Yêu cầu chat thành công
 #define CHECK_PARTNERSHIP 0x48     // Kiểm tra quan hệ thành công
 #define RESPONSE_CHAT 0x23         // Gửi tin nhắn thành công
-#define RESPONSE_CHAT_OFFLINE 0x24 // Gửi tin nhắn ngoại tuyến thành công
 #define RESPONSE_RETRIEVE 0x25     // Lấy tin nhắn thành công
 #define RESPONSE_ADDFR 0x26        // Gửi yêu cầu kết bạn thành công
 #define FAIL_ADDFR 0x46            // Gửi yêu cầu kết bạn thất bại
@@ -114,6 +112,7 @@ void send_packet(int cmd, const char *payload)
     send(sock, &c, 1, 0);
     if (p_len > 0)
         send(sock, payload, p_len, 0);
+    printf(">> Sent packet: CMD=0x%02X, Payload='%s'\n", cmd, payload);
 }
 
 void get_input(char *prompt, char *buffer, int size)
@@ -203,6 +202,36 @@ void *receive_handler(void *arg)
             print_prompt();
         }
 
+        else if (cmd == RESPONSE_LOGOUT)
+        { // 0x34
+            printf("\n👋  %s\n", buffer);
+            my_id = -1; // Reset trạng thái Client về Khách
+            strcpy(my_name, "");
+            print_prompt();
+        }
+
+        else if (cmd == RESPONSE_CHAT_REQUEST)
+        { // 0x47
+            // Payload: "SenderID:Name"
+            printf("\n\n🔔  BAN CO LOI MOI CHAT TU: %s\n", buffer);
+            printf("    (Chon muc '18. Chap nhan chat' de dong y)\n");
+            print_prompt();
+        }
+        else if (cmd == CHECK_PARTNERSHIP)
+        { // 0x48
+            if (strcmp(buffer, "true") == 0)
+            {
+                printf("\n✅  KET NOI THANH CONG! Bat dau chat.\n");
+            }
+            print_prompt();
+        }
+
+        else if (cmd == RESPONSE_LISTFR)
+        { // 0x29
+            printf("\n%s\n", buffer);
+            print_prompt();
+        }
+
         print_prompt();
     }
     printf("\n⚠️  Mat ket noi Server!\n");
@@ -260,6 +289,12 @@ void process_user_mode()
 
         if (strcmp(line, "/back") == 0)
         {
+            // Gửi thông báo ngắt chat cho đối phương
+            // Cấu trúc: [0x19] [MyID] [PartnerID]
+            char payload[100];
+            sprintf(payload, "%d %d", my_id, current_chat_id);
+            send_packet(CMD_DISCONNECT_CHAT, payload);
+
             current_chat_id = -1;
             printf("\n🔙  Da roi cuoc tro chuyen.\n");
         }
@@ -307,7 +342,7 @@ void process_user_mode()
     // --- 3. MENU CHÍNH ---
     char choice_str[10];
     printf("\n=== BANG DIEU KHIEN (%s) ===\n", my_name);
-    printf("1. Chat voi ban be (Private)\n");
+    printf("1. Chat riêng tư 1-1 (Private)\n");
     printf("2. Dang xuat\n");
     printf("3. Them ban be\n");
     printf("4. Xem loi moi\n");
@@ -317,13 +352,22 @@ void process_user_mode()
     printf("8. Xem ds phong\n");
     printf("9. Tham gia phong\n");
     printf("10. Vao chat trong phong (Group Chat)\n");
-    printf("11. Xem lich su tin nhan\n");
+    // printf("11. Xem lich su tin nhan\n");
+    printf("12. Roi phong chat (Leave)\n");
+    printf("13. Xoa thanh vien (Kick - Admin only)\n");
+    printf("14. Tu choi loi moi ket ban (Decline)\n");
+    printf("15. Xoa ban be (Unfriend)\n");
+    printf("16. Xem thanh vien phong\n");
+    printf("17. Moi ban vao phong (Invite)\n");
+    printf("18. Chap nhan yeu cau chat (Accept Chat)\n");
+    printf("19. Gui yeu cau chat (Request Chat)\n");
+    printf("20. Huy loi moi ket ban (Cancel Request)\n");
     print_prompt();
 
     fgets(choice_str, 10, stdin);
     int choice = atoi(choice_str); // Chuyển sang số nguyên
 
-        if (choice == 1)
+    if (choice == 1)
     {
         char id_str[10];
         printf("\n--- MO HOP THOAI RIENG ---\n");
@@ -336,9 +380,10 @@ void process_user_mode()
     }
     else if (choice == 2)
     {
-        my_id = -1;
-        strcpy(my_name, "");
-        printf("\n👋  Da dang xuat.\n");
+        // Gửi lệnh: [0x14] [MyID]
+        char payload[50];
+        sprintf(payload, "%d", my_id);
+        send_packet(CMD_LOGOUT, payload);
     }
     else if (choice == 3)
     {
@@ -399,6 +444,91 @@ void process_user_mode()
         printf("    (Moi tin nhan se duoc gui cho tat ca thanh vien)\n");
         printf("    (Go '/back' de quay lai Menu)\n");
     }
+
+    else if (choice == 12)
+    { // Rời phòng
+        char rid[10];
+        printf("\n--- ROI PHONG ---\n");
+        get_input("Nhap ID Phong muon roi: ", rid, 10);
+
+        // Gửi: [RoomID] [MyID]
+        char payload[100];
+        sprintf(payload, "%s %d", rid, my_id);
+        send_packet(CMD_LEAVE_ROOM, payload);
+    }
+    else if (choice == 13)
+    { // Kick người
+        char rid[10], target[10];
+        printf("\n--- XOA THANH VIEN ---\n");
+        get_input("Nhap ID Phong: ", rid, 10);
+        get_input("Nhap ID Thanh vien can xoa: ", target, 10);
+
+        // Gửi: [RoomID] [MyID] [TargetID]
+        char payload[100];
+        sprintf(payload, "%s %d %s", rid, my_id, target);
+        send_packet(CMD_REMOVE_USER, payload);
+    }
+
+    else if (choice == 14)
+    { // Từ chối
+        char id[10];
+        printf("\n--- TU CHOI LOI MOI ---\n");
+        get_input("Nhap ID nguoi muon tu choi: ", id, 10);
+        send_packet(CMD_DECLINE, id);
+    }
+    else if (choice == 15)
+    { // Xóa bạn
+        char id[10];
+        printf("\n--- XOA BAN BE ---\n");
+        get_input("Nhap ID ban muon xoa: ", id, 10);
+        send_packet(CMD_REMOVE, id);
+    }
+
+    else if (choice == 16)
+    { // Xem thành viên
+        char r_name[50];
+        printf("\n--- XEM THANH VIEN PHONG ---\n");
+        // Server yêu cầu Tên Phòng chứ không phải ID
+        get_input("Nhap TEN phong: ", r_name, 50);
+        send_packet(CMD_VIEW_ROOM_MEMBERS, r_name);
+    }
+    else if (choice == 17)
+    { // Mời bạn
+        char r_name[50];
+        char t_id[10];
+        printf("\n--- MOI BAN VAO PHONG ---\n");
+        get_input("Nhap TEN phong: ", r_name, 50);
+        get_input("Nhap ID nguoi muon moi: ", t_id, 10);
+
+        // Gửi: [Ten_Phong] [Target_ID]
+        char payload[100];
+        sprintf(payload, "%s %s", r_name, t_id);
+        send_packet(CMD_ADD_TO_ROOM, payload);
+    }
+
+    else if (choice == 19)
+    { // Gửi yêu cầu
+        char id[10];
+        printf("\n--- GUI YEU CAU CHAT ---\n");
+        get_input("Nhap ID nguoi muon chat: ", id, 10);
+        send_packet(CMD_REQUEST_CHAT, id);
+    }
+    else if (choice == 18)
+    { // Chấp nhận
+        char id[10];
+        printf("\n--- CHAP NHAN CHAT ---\n");
+        get_input("Nhap ID nguoi moi: ", id, 10);
+        send_packet(CMD_ACCEPT_CHAT, id);
+    }
+
+    else if (choice == 20)
+    {
+        char id[10];
+        printf("\n--- HUY LOI MOI ---\n");
+        get_input("Nhap ID nguoi muon huy: ", id, 10);
+        send_packet(CMD_CANCEL, id);
+    }
+
     else
     {
         printf("⚠️  Lua chon khong hop le.\n");

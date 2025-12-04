@@ -7,7 +7,6 @@
 #define CMD_REGISTER 0x01           // Đăng ký tài khoản
 #define CMD_LOGIN 0x02              // Đăng nhập
 #define CMD_CHAT 0x03               // Gửi tin nhắn riêng tư
-#define CMD_CHAT_OFFLINE 0x04       // Gửi tin nhắn ngoại tuyến
 #define CMD_RETRIEVE 0x05           // Lấy tin nhắn đã gửi/nhận
 #define CMD_ADDFR 0x06              // Gửi yêu cầu kết bạn
 #define CMD_ACCEPT 0x07             // Chấp nhận yêu cầu kết bạn
@@ -38,7 +37,6 @@
 #define RESPONSE_CHAT_REQUEST 0x47 // Yêu cầu chat thành công
 #define CHECK_PARTNERSHIP 0x48     // Kiểm tra quan hệ thành công
 #define RESPONSE_CHAT 0x23         // Gửi tin nhắn thành công
-#define RESPONSE_CHAT_OFFLINE 0x24 // Gửi tin nhắn ngoại tuyến thành công
 #define RESPONSE_RETRIEVE 0x25     // Lấy tin nhắn thành công
 #define RESPONSE_ADDFR 0x26        // Gửi yêu cầu kết bạn thành công
 #define FAIL_ADDFR 0x46            // Gửi yêu cầu kết bạn thất bại

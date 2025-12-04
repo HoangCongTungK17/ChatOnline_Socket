@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
+#include <time.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <pthread.h>
@@ -12,6 +14,8 @@
 
 int main()
 {
+    srand(time(NULL));
+    signal(SIGPIPE, SIG_IGN);
     int server_fd, new_socket;
     struct sockaddr_in address;
     int opt = 1;

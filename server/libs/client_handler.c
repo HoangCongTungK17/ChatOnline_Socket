@@ -231,6 +231,174 @@ void *client_handler(void *socket_desc)
             }
             break;
         }
+
+        case CMD_LEAVE_ROOM: // 0x11
+        {
+            if (user_id == -1)
+            {
+                send_packet(client_sock, STATUS_ERROR, "Chua dang nhap");
+            }
+            else
+            {
+                int r_id, u_id;
+                // Payload: "RoomID UserID"
+                if (sscanf(buffer, "%d %d", &r_id, &u_id) == 2)
+                {
+                    // (Bảo mật: Nên check xem u_id có trùng với user_id đang login không)
+                    handle_leave_room(client_sock, u_id, r_id);
+                }
+                else
+                {
+                    send_packet(client_sock, STATUS_ERROR, "Sai cu phap");
+                }
+            }
+            break;
+        }
+
+        case CMD_REMOVE_USER: // 0x12
+        {
+            if (user_id == -1)
+            {
+                send_packet(client_sock, STATUS_ERROR, "Chua dang nhap");
+            }
+            else
+            {
+                int r_id, admin_id, target_id;
+                // Payload: "RoomID AdminID TargetID"
+                if (sscanf(buffer, "%d %d %d", &r_id, &admin_id, &target_id) == 3)
+                {
+                    handle_remove_user(client_sock, admin_id, r_id, target_id);
+                }
+                else
+                {
+                    send_packet(client_sock, STATUS_ERROR, "Sai cu phap");
+                }
+            }
+            break;
+        }
+
+        case CMD_REMOVE: // 0x0C (Xóa bạn)
+        {
+            if (user_id == -1)
+                send_packet(client_sock, STATUS_ERROR, "Chua dang nhap");
+            else
+            {
+                int target_id = atoi(buffer); // Payload là ID bạn muốn xóa
+                handle_remove_friend(client_sock, user_id, target_id);
+            }
+            break;
+        }
+
+        case CMD_DECLINE: // 0x08 (Từ chối)
+        {
+            if (user_id == -1)
+                send_packet(client_sock, STATUS_ERROR, "Chua dang nhap");
+            else
+            {
+                int target_id = atoi(buffer); // Payload là ID người gửi lời mời
+                handle_decline_friend(client_sock, user_id, target_id);
+            }
+            break;
+        }
+
+        case CMD_LOGOUT: // 0x14
+        {
+            if (user_id != -1)
+            {
+                printf(">>> [LOGOUT] User %d dang xuat.\n", user_id);
+                remove_session(client_sock); // Xóa khỏi danh sách Online
+                user_id = -1;
+                current_username[0] = '\0';
+
+                // Gửi xác nhận cho Client
+                send_packet(client_sock, RESPONSE_LOGOUT, "Dang xuat thanh cong");
+            }
+            else
+            {
+                send_packet(client_sock, STATUS_ERROR, "Ban chua dang nhap");
+            }
+            break;
+        }
+
+        case CMD_DISCONNECT_CHAT: // 0x19
+        {
+            // Payload: "SenderID ReceiverID"
+            if (user_id != -1)
+            {
+                handle_disconnect_chat(client_sock, user_id, buffer);
+            }
+            break;
+        }
+
+        case CMD_VIEW_ROOM_MEMBERS: // 0x17
+        {
+            if (user_id == -1)
+            {
+                send_packet(client_sock, STATUS_ERROR, "Chua dang nhap");
+            }
+            else
+            {
+                // Payload: "Ten_Phong"
+                handle_view_room_members(client_sock, buffer);
+            }
+            break;
+        }
+
+        case CMD_ADD_TO_ROOM: // 0x10
+        {
+            if (user_id == -1)
+            {
+                send_packet(client_sock, STATUS_ERROR, "Chua dang nhap");
+            }
+            else
+            {
+                char r_name[50];
+                int target_id;
+                // Payload: "Ten_Phong Target_ID"
+                if (sscanf(buffer, "%s %d", r_name, &target_id) == 2)
+                {
+                    handle_add_to_room(client_sock, r_name, target_id);
+                }
+                else
+                {
+                    send_packet(client_sock, STATUS_ERROR, "Sai cu phap");
+                }
+            }
+            break;
+        }
+
+        case CMD_REQUEST_CHAT: // 0x15
+        {
+            int target_id = atoi(buffer); // Payload: TargetID
+            request_private_chat(client_sock, user_id, target_id);
+            break;
+        }
+
+        case CMD_ACCEPT_CHAT: // 0x20
+        {
+            int req_id = atoi(buffer); // Payload: RequesterID
+            accept_chat_request(client_sock, user_id, req_id);
+            break;
+        }
+
+        case CMD_CHECK_PARTNERSHIP: // 0x18
+        {
+            int target_id = atoi(buffer);
+            check_chat_partnership(client_sock, user_id, target_id);
+            break;
+        }
+
+        case CMD_CANCEL: // 0x0A
+        {
+            if (user_id == -1)
+                send_packet(client_sock, STATUS_ERROR, "Chua dang nhap");
+            else
+            {
+                int target_id = atoi(buffer); // Payload là ID người mình muốn rút lại
+                handle_cancel_request(client_sock, user_id, target_id);
+            }
+            break;
+        }
         }
     }
 

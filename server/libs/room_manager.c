@@ -284,3 +284,234 @@ void handle_load_room_messages(int client_sock, int room_id)
 
     send_packet(client_sock, 0x25, history);
 }
+
+// Hàm lưu lại toàn bộ danh sách thành viên vào file (Ghi đè)
+void rewrite_room_members(int room_id)
+{
+    char room_file[256];
+    sprintf(room_file, "server/room_data/room_%d.txt", rooms[room_id].id);
+
+    FILE *f = fopen(room_file, "w"); // Mở để ghi đè (Write)
+    if (f)
+    {
+        // Dòng 1: Tên phòng
+        fprintf(f, "%s\n", rooms[room_id].name);
+        // Các dòng sau: ID thành viên
+        for (int i = 0; i < rooms[room_id].count; i++)
+        {
+            fprintf(f, "%d\n", rooms[room_id].members[i]);
+        }
+        fclose(f);
+    }
+}
+
+// --- XỬ LÝ RỜI PHÒNG ---
+void handle_leave_room(int client_sock, int user_id, int room_id)
+{
+    int index = -1;
+    // 1. Tìm phòng trong RAM
+    for (int i = 0; i < room_count; i++)
+    {
+        if (rooms[i].id == room_id)
+        {
+            index = i;
+            break;
+        }
+    }
+
+    if (index == -1)
+    {
+        send_packet(client_sock, STATUS_ERROR, "Phong khong ton tai");
+        return;
+    }
+
+    // 2. Tìm và Xóa user khỏi mảng
+    int found = 0;
+    for (int i = 0; i < rooms[index].count; i++)
+    {
+        if (rooms[index].members[i] == user_id)
+        {
+            // Dồn các phần tử phía sau lên để lấp chỗ trống
+            for (int j = i; j < rooms[index].count - 1; j++)
+            {
+                rooms[index].members[j] = rooms[index].members[j + 1];
+            }
+            rooms[index].count--; // Giảm số lượng
+            found = 1;
+            break;
+        }
+    }
+
+    if (found)
+    {
+        // 3. Cập nhật xuống File
+        rewrite_room_members(index);
+
+        printf(">>> [ROOM] User %d da roi phong %d\n", user_id, room_id);
+        send_packet(client_sock, RESPONSE_SUCCESS, "Da roi phong thanh cong");
+
+        // (Nâng cao: Có thể broadcast báo cho người còn lại biết)
+    }
+    else
+    {
+        send_packet(client_sock, STATUS_ERROR, "Ban khong o trong phong nay");
+    }
+}
+
+// --- XỬ LÝ ĐUỔI THÀNH VIÊN (KICK) ---
+void handle_remove_user(int client_sock, int admin_id, int room_id, int target_id)
+{
+    int index = -1;
+    for (int i = 0; i < room_count; i++)
+    {
+        if (rooms[i].id == room_id)
+        {
+            index = i;
+            break;
+        }
+    }
+
+    if (index == -1)
+    {
+        send_packet(client_sock, STATUS_ERROR, "Phong khong ton tai");
+        return;
+    }
+
+    // 1. Kiểm tra quyền Admin (Người tạo phòng là người đầu tiên trong danh sách - index 0)
+    // (Trong code create_room ta đã gán members[0] = creator_id)
+    if (rooms[index].members[0] != admin_id)
+    {
+        send_packet(client_sock, STATUS_ERROR, "Ban khong phai Chu phong (Admin)");
+        return;
+    }
+
+    // 2. Tìm và Xóa target_id
+    int found = 0;
+    for (int i = 0; i < rooms[index].count; i++)
+    {
+        if (rooms[index].members[i] == target_id)
+        {
+            // Dồn mảng
+            for (int j = i; j < rooms[index].count - 1; j++)
+            {
+                rooms[index].members[j] = rooms[index].members[j + 1];
+            }
+            rooms[index].count--;
+            found = 1;
+            break;
+        }
+    }
+
+    if (found)
+    {
+        rewrite_room_members(index);
+
+        printf(">>> [ROOM] Admin %d da xoa User %d khoi phong %d\n", admin_id, target_id, room_id);
+        send_packet(client_sock, RESPONSE_SUCCESS, "Da xoa thanh vien khoi phong");
+
+        // Thông báo cho người bị xóa (Nếu họ đang online)
+        int target_sock = get_socket_by_user_id(target_id);
+        if (target_sock != -1)
+        {
+            send_packet(target_sock, STATUS_ERROR, "Ban da bi xoa khoi phong chat!");
+        }
+    }
+    else
+    {
+        send_packet(client_sock, STATUS_ERROR, "Thanh vien khong ton tai trong phong");
+    }
+}
+
+// --- XEM THÀNH VIÊN PHÒNG (Dùng Tên Phòng) ---
+void handle_view_room_members(int client_sock, char *room_name)
+{
+    int index = -1;
+    // 1. Tìm phòng theo Tên
+    for (int i = 0; i < room_count; i++)
+    {
+        if (strcmp(rooms[i].name, room_name) == 0)
+        {
+            index = i;
+            break;
+        }
+    }
+
+    if (index == -1)
+    {
+        send_packet(client_sock, STATUS_ERROR, "Phong khong ton tai");
+        return;
+    }
+
+    // 2. Tạo chuỗi danh sách thành viên
+    char response[2048];
+    sprintf(response, "Thanh vien phong '%s':\n", room_name);
+
+    for (int i = 0; i < rooms[index].count; i++)
+    {
+        int member_id = rooms[index].members[i];
+        // Lấy tên user từ ID (Hàm này trong user_manager)
+        char member_name[50];
+        get_username_by_id(member_id, member_name);
+
+        char line[100];
+        sprintf(line, "- %s (ID: %d)\n", member_name, member_id);
+        strcat(response, line);
+    }
+
+    send_packet(client_sock, RESPONSE_SUCCESS, response);
+}
+
+// --- MỜI NGƯỜI VÀO PHÒNG (ADD TO ROOM) ---
+void handle_add_to_room(int client_sock, char *room_name, int target_id)
+{
+    int index = -1;
+    for (int i = 0; i < room_count; i++)
+    {
+        if (strcmp(rooms[i].name, room_name) == 0)
+        {
+            index = i;
+            break;
+        }
+    }
+
+    if (index == -1)
+    {
+        send_packet(client_sock, STATUS_ERROR, "Phong khong ton tai");
+        return;
+    }
+
+    // 1. Kiểm tra xem người đó đã trong phòng chưa
+    for (int i = 0; i < rooms[index].count; i++)
+    {
+        if (rooms[index].members[i] == target_id)
+        {
+            send_packet(client_sock, STATUS_ERROR, "Nguoi nay da o trong phong roi");
+            return;
+        }
+    }
+
+    // 2. Thêm vào phòng
+    if (rooms[index].count < 100)
+    {
+        rooms[index].members[rooms[index].count++] = target_id;
+
+        // Lưu xuống file (Hàm này đã viết ở Ngày 14)
+        save_member_to_room(rooms[index].id, target_id);
+
+        send_packet(client_sock, RESPONSE_SUCCESS, "Da them thanh vien vao phong");
+        printf(">>> [ROOM] Them User %d vao phong '%s'\n", target_id, room_name);
+
+        // (Optional) Báo cho người được mời biết
+        int target_sock = get_socket_by_user_id(target_id);
+        if (target_sock != -1)
+        {
+            char noti[200];
+            sprintf(noti, "Ban da duoc them vao phong '%s'", room_name);
+            send_packet(target_sock, RESPONSE_SUCCESS, noti);
+        }
+    }
+    else
+    {
+        send_packet(client_sock, STATUS_ERROR, "Phong da day");
+    }
+}

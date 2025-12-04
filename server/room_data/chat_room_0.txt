@@ -1,4 +1,2 @@
-[User 6]: hello
-[User 6]: how
-[User 1]: hello
-[User 5]: chao cac ban
+[User 2]: hi
+[User 3]: ho

@@ -13,4 +13,9 @@ void handle_list_request(int client_sock, int my_id);
 // Lấy danh sách bạn bè
 void handle_list_friends(int client_sock, int my_id);
 
+void handle_remove_friend(int client_sock, int my_id, int friend_id);
+void handle_decline_friend(int client_sock, int my_id, int requester_id);
+
+void handle_cancel_request(int client_sock, int my_id, int receiver_id);
+
 #endif

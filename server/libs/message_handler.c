@@ -187,3 +187,83 @@ void handle_retrieve_message(int client_sock, int requester_id, int partner_id)
     // Gửi trả về Client
     send_packet(client_sock, RESPONSE_RETRIEVE, history_buffer);
 }
+
+// --- XỬ LÝ NGẮT KẾT NỐI CHAT (Báo cho đối phương) ---
+void handle_disconnect_chat(int client_sock, int sender_id, char *payload)
+{
+    int receiver_id;
+
+    // Chúng ta sẽ parse cả 2 số từ payload
+    if (sscanf(payload, "%d %d", &sender_id, &receiver_id) == 2)
+    {
+
+        printf(">>> [CHAT] User %d da roi cuoc tro chuyen voi User %d\n", sender_id, receiver_id);
+
+        // Tìm socket người nhận để báo tin
+        int receiver_sock = get_socket_by_user_id(receiver_id);
+        if (receiver_sock != -1)
+        {
+            char msg_packet[1024];
+            // Gửi một tin nhắn hệ thống, format: "SenderID:Da roi cuoc tro chuyen"
+            // (Client sẽ hiển thị nó như một tin nhắn bình thường)
+            sprintf(msg_packet, "%d:--- Doi phuong da roi cuoc tro chuyen ---", sender_id);
+
+            // Dùng mã RESPONSE_CHAT (0x23) để hiện lên khung chat của họ
+            send_packet(receiver_sock, RESPONSE_CHAT, msg_packet);
+        }
+    }
+}
+
+// --- KIỂM TRA QUAN HỆ CHAT ---
+void check_chat_partnership(int client_sock, int sender_id, int receiver_id)
+{
+    // Logic: Kiểm tra xem Server có đang ghi nhận 2 người này là partner của nhau không
+    // (Ở phiên bản đơn giản này, ta có thể luôn trả về TRUE hoặc check session)
+    // Để bám sát code gốc, ta gửi phản hồi 0x48 (CHECK_PARTNERSHIP)
+
+    // Giả sử luôn cho phép (hoặc bạn có thể check session.chat_partner_id)
+    send_packet(client_sock, 0x48, "true");
+}
+
+// --- GỬI YÊU CẦU CHAT ---
+void request_private_chat(int client_sock, int sender_id, int receiver_id)
+{
+    int receiver_sock = get_socket_by_user_id(receiver_id);
+
+    if (receiver_sock == -1)
+    {
+        send_packet(client_sock, STATUS_ERROR, "Nguoi dung Offline");
+        return;
+    }
+
+    // Gửi lời mời cho Receiver: [0x47] [SenderID:SenderName]
+    char sender_name[50];
+    get_username_by_id(sender_id, sender_name);
+
+    char payload[100];
+    sprintf(payload, "%d:%s", sender_id, sender_name);
+
+    // Mã 0x47 = RESPONSE_CHAT_REQUEST
+    send_packet(receiver_sock, 0x47, payload);
+
+    send_packet(client_sock, RESPONSE_SUCCESS, "Da gui yeu cau chat");
+}
+
+// --- CHẤP NHẬN YÊU CẦU CHAT ---
+void accept_chat_request(int client_sock, int my_id, int requester_id)
+{
+    // Cập nhật trạng thái Session cho cả 2
+    set_chat_partner(my_id, requester_id);
+    set_chat_partner(requester_id, my_id);
+
+    int req_sock = get_socket_by_user_id(requester_id);
+
+    // Báo cho cả 2 biết là đã kết nối thành công (Mã 0x48 - CHECK_PARTNERSHIP = true)
+    send_packet(client_sock, 0x48, "true");
+    if (req_sock != -1)
+    {
+        send_packet(req_sock, 0x48, "true");
+    }
+
+    printf(">>> [CHAT] User %d va User %d da bat dau phien chat.\n", my_id, requester_id);
+}
